@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package parkit;
+
+message EntryRequest { 
+  string plat_nomor = 1; 
+}
+
+message EntryResponse { 
+  string ticket_id = 1; 
+  string status = 2; 
+}
+
+message ExitRequest { 
+  string ticket_id = 1; 
+  int32 durasi_jam = 2; 
+} 
+
+message ExitResponse { 
+  int32 total_harga = 1; 
+  string status = 2; 
+}
+
+message VerifyRequest { 
+  string ticket_id = 1; 
+}
+
+message VerifyResponse { 
+  string status = 1; 
+}
+
+message StatusResponse {
+  int32 sisa_slot = 1;
+  string log_terakhir = 2;
+  string data_kendaraan = 3; // Untuk sinkronisasi daftar mobil (Opsi B)
+}
+
+message Empty {}
+
+service GateService {
+  rpc RecordEntry (EntryRequest) returns (EntryResponse);
+  rpc VerifyTicket (VerifyRequest) returns (VerifyResponse);
+  rpc ProcessExit (ExitRequest) returns (ExitResponse);
+}
+
+service InventoryService {
+  rpc ReserveSlot (EntryRequest) returns (EntryResponse);
+  rpc VerifyTicket (VerifyRequest) returns (VerifyResponse);
+  rpc FreeSlot (ExitRequest) returns (Empty); 
+  rpc MonitorStatus (Empty) returns (stream StatusResponse);
+}
+
+service PaymentService {
+  rpc CalculateFee (ExitRequest) returns (ExitResponse);
+}

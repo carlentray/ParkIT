@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ParkIT Command Center 2x2</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f7; color: #333; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 95%; max-width: 1100px; }
+        
+        /* Grid 2x2 */
+        .grid-main { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            grid-template-rows: auto auto; 
+            gap: 20px; 
+        }
+
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); transition: 0.3s; display: flex; flex-direction: column; }
+        .card:hover { transform: translateY(-5px); }
+        
+        /* Typography & Components */
+        h3 { margin-top: 0; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .status-badge { padding: 5px 15px; border-radius: 20px; font-size: 0.8em; font-weight: bold; text-transform: uppercase; }
+        .available { background: #d4edda; color: #155724; }
+        .full { background: #f8d7da; color: #721c24; }
+
+        #status-indicator { height: 12px; border-radius: 10px; background: #ddd; margin: 20px 0; overflow: hidden; }
+        #progress-bar { height: 100%; width: 0%; background: #28a745; transition: 0.8s ease-in-out; }
+
+        #log-activity { height: 200px; overflow-y: auto; background: #1e1e1e; color: #adbac7; padding: 15px; border-radius: 8px; font-family: 'Consolas', monospace; font-size: 0.85em; line-height: 1.5; flex-grow: 1; }
+        .log-entry { border-bottom: 1px solid #333; padding: 5px 0; }
+        .log-time { color: #539bf5; margin-right: 10px; }
+
+        .control-group { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+        input { padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 1em; }
+        button { padding: 12px; cursor: pointer; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1em; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+
+        .btn-entry { background: #007bff; }
+        .btn-entry:hover { background: #0056b3; }
+        .btn-exit { background: #28a745; }
+        .btn-exit:hover { background: #218838; }
+
+        #feedback-msg { margin-top: 15px; font-size: 0.9em; font-weight: bold; text-align: center; min-height: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header style="text-align: center; margin-bottom: 30px;">
+            <h1 style="margin:0;">🅿️ ParkIT Command Center</h1>
+            <p style="color: #666;">gRPC & WebSocket Distributed System</p>
+        </header>
+
+
+
+        <div class="grid-main">
+            <div class="card">
+                <h3>📊 Live Monitoring</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                    <h2 style="font-size: 4em; margin: 0;" id="slot-counter">--</h2>
+                    <span id="badge" class="status-badge available">Tersedia</span>
+                </div>
+                <p style="color: #888;">Sisa Kapasitas Parkir</p>
+                <div id="status-indicator">
+                    <div id="progress-bar"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="margin: 0;">📑 System Logs</h3>
+                    <button onclick="clearLogs()" style="background: #fff; color: white; border: none; padding: 4px 4px; border-radius: 8px; cursor: pointer; font-size: 1.2em;">
+                        🗑️
+                    </button>
+                </div>
+            
+                <div id="log-activity" style="max-height: 200px; overflow-y: auto;">
+                    Menunggu aliran data dari gRPC stream...
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📥 Entry Control</h3>
+                <div class="control-group">
+                    <label style="font-size: 0.85em; color: #666; margin-bottom: 8px; display: block; height: 1.2em;">Registrasi Plat Nomor:</label>
+
+                    <div style="display: flex; margin-bottom: 10px;">
+                        <input type="text" id="plat-input" placeholder="Contoh: B 1234 ABC" style="width: 100%; box-sizing: border-box;">
+                    </div>
+
+                    <button class="btn-entry" onclick="entryManual()" style="width: 100%;">ENTRY</button>
+                </div>
+            </div>
+        
+            <div class="card">
+                <h3>📤 Exit Control</h3>
+                <div class="control-group">
+                    <label style="font-size: 0.85em; color: #666; margin-bottom: 8px; display: block; height: 1.2em;">Proses Keluar & Pembayaran:</label>
+
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <input type="text" id="ticket-input" placeholder="ID Tiket" style="flex: 3; box-sizing: border-box; text-transform: uppercase;">
+                        <input type="number" id="hour-input" placeholder="Jam" style="flex: 1; box-sizing: border-box; min-width: 60px;">
+                    </div>
+
+                    <button class="btn-exit" onclick="exitManual()" style="width: 100%;">EXIT</button>
+                </div>
+            </div>
+        </div>
+
+        <p id="feedback-msg"></p>
+    </div>
+
+    <div class="card" style="margin-top: 20px; border-top: 5px solid #007bff;">
+        <h3>🚗 Kendaraan di Dalam Parkir</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; text-align: left;">
+            <thead>
+                <tr style="border-bottom: 2px solid #eee; color: #666; font-size: 0.9em;">
+                    <th style="padding: 10px;">ID TIKET</th>
+                    <th style="padding: 10px;">PLAT NOMOR</th>
+                    <th style="padding: 10px;">WAKTU MASUK</th>
+                </tr>
+            </thead>
+            <tbody id="parking-list">
+                <tr>
+                    <td colspan="3" style="text-align: center; padding: 20px; color: #999;">Belum ada kendaraan di dalam.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const socket = io();
+        const logBox = document.getElementById('log-activity');
+        const progressBar = document.getElementById('progress-bar');
+        const badge = document.getElementById('badge');
+        const totalSlot = 5; 
+
+        let activeVehicles = JSON.parse(localStorage.getItem('parking_data')) || {};
+        let savedLogs = JSON.parse(localStorage.getItem('system_logs')) || [];
+
+        window.onload = () => {
+            updateParkingTable();
+            renderSavedLogs();
+        };
+
+        function renderSavedLogs() {
+            if (savedLogs.length > 0) {
+                logBox.innerHTML = "";
+                savedLogs.forEach(log => {
+                    const div = document.createElement('div');
+                    div.className = "log-entry";
+                    div.innerHTML = `<span class="log-time">[${log.time}]</span> ${log.msg}`;
+                    logBox.appendChild(div); // Logs lama ditaruh di bawah
+                });
+            }
+        }
+
+        function saveLogToLocal(msg) {
+            const newLog = { time: new Date().toLocaleTimeString(), msg: msg };
+            savedLogs.unshift(newLog); // Tambah ke awal array
+            if (savedLogs.length > 50) savedLogs.pop(); // Batasi 50 log saja
+            localStorage.setItem('system_logs', JSON.stringify(savedLogs));
+        }
+
+        // --- CORE REAL-TIME LOGIC ---
+        socket.on('update-dashboard', (data) => {
+            // 1. Update Counter & Progress Bar
+            document.getElementById('slot-counter').innerText = data.sisa_slot;
+            const percentage = (data.sisa_slot / totalSlot) * 100;
+            progressBar.style.width = percentage + "%";
+
+            // 2. Initial Sync Logic (Opsi B)
+            // Jika ada data kendaraan dari server, gunakan itu sebagai data utama
+            if (data.data_kendaraan) {
+                const remoteData = JSON.parse(data.data_kendaraan);
+                const newActiveVehicles = {}; // Temporary object
+
+                for (const [tix, plat] of Object.entries(remoteData)) {
+                    // CEK DISINI: Jika kendaraan sudah ada di data lokal, pakai waktu yang lama
+                    if (activeVehicles[tix]) {
+                        newActiveVehicles[tix] = activeVehicles[tix];
+                    } else {
+                        // Jika benar-benar baru masuk, kasih waktu sekarang
+                        newActiveVehicles[tix] = { 
+                            plat: plat, 
+                            time: new Date().toLocaleTimeString() 
+                        };
+                    }
+                }
+
+                activeVehicles = newActiveVehicles;
+                localStorage.setItem('parking_data', JSON.stringify(activeVehicles));
+                updateParkingTable();
+            }
+
+            // 3. Update Log & Handle Tabel (Real-time updates)
+            if(data.log_terakhir) {
+                if(logBox.innerText.includes("Menunggu")) logBox.innerHTML = "";
+                const div = document.createElement('div');
+                div.className = "log-entry";
+                div.innerHTML = `<span class="log-time">[${new Date().toLocaleTimeString()}]</span> ${data.log_terakhir}`;
+                logBox.prepend(div);
+                
+                saveLogToLocal(data.log_terakhir);
+                handleVehicleTable(data.log_terakhir);
+            }
+        });
+
+        function handleVehicleTable(logMsg) {
+            // Jika ada mobil masuk
+            if (logMsg.includes("Masuk:")) {
+                const match = logMsg.match(/Masuk: (.*) \(Tiket: (.*)\)/);
+                if (match) {
+                    const plat = match[1];
+                    const tix = match[2];
+                    activeVehicles[tix] = { plat: plat, time: new Date().toLocaleTimeString() };
+                    localStorage.setItem('parking_data', JSON.stringify(activeVehicles));
+                    updateParkingTable();
+                }
+            } 
+            // Jika ada mobil keluar
+            else if (logMsg.includes("Keluar:")) {
+                const match = logMsg.match(/Tiket: (TIX-\d+)/);
+                if (match) {
+                    delete activeVehicles[match[1]];
+                    localStorage.setItem('parking_data', JSON.stringify(activeVehicles));
+                    updateParkingTable();
+                }
+            }
+        }
+
+        function updateParkingTable() {
+            const tableBody = document.getElementById('parking-list');
+            const keys = Object.keys(activeVehicles);
+
+            if (keys.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #999;">Belum ada kendaraan di dalam.</td></tr>';
+                return;
+            }
+
+            tableBody.innerHTML = keys.map(tix => `
+                <tr style="border-bottom: 1px solid #f9f9f9; font-size: 0.9em;">
+                    <td style="padding: 10px; font-weight: bold; color: #007bff;">${tix}</td>
+                    <td style="padding: 10px;">${activeVehicles[tix].plat}</td>
+                    <td style="padding: 10px; color: #888;">${activeVehicles[tix].time}</td>
+                </tr>
+            `).join('');
+        }
+
+        // --- COMMAND & CONTROL FUNCTIONS ---
+        function entryManual() {
+            const platInput = document.getElementById('plat-input');
+            const plat = platInput.value.trim().toUpperCase();
+            const feedback = document.getElementById('feedback-msg');
+            const platRegex = /^[A-Z]{1,2}\s\d{1,4}\s[A-Z]{1,3}$/;
+                
+            if (!plat) return Swal.fire('Error', 'Plat nomor tidak boleh kosong!', 'error');
+            if (!platRegex.test(plat)) {
+                return Swal.fire('Format Salah', 'Contoh: B 1234 XYZ', 'warning');
+            }
+        
+            feedback.innerText = "⏳ Mengirim instruksi ke gRPC...";
+            socket.emit('trigger-entry-manual', plat);
+        }
+
+        function clearLogs() {
+            localStorage.removeItem('system_logs');
+            logBox.innerHTML = '<div class="log-entry" style="color: #999;">Menunggu aktivitas sistem...</div>';
+            savedLogs = [];
+            console.log("Logs cleared!");
+        }
+
+        function exitManual() {
+            const ticketId = document.getElementById('ticket-input').value.trim();
+            const hour = document.getElementById('hour-input').value;
+            
+            if(!ticketId || !hour) return Swal.fire('Error', 'Lengkapi data!', 'error');
+            
+            document.getElementById('feedback-msg').innerText = "⏳ Memproses Exit...";
+            socket.emit('trigger-exit-manual', { 
+                ticket_id: ticketId, 
+                durasi_jam: parseInt(hour) 
+            });
+        }
+
+        // --- SERVER RESPONSE LISTENERS ---
+        socket.on('entry-success', (res) => {
+            document.getElementById('feedback-msg').innerText = "✅ Berhasil! Tiket: " + res.ticket_id;
+            document.getElementById('plat-input').value = "";
+        });
+
+        socket.on('exit-success', (res) => {
+            Swal.fire({
+                title: 'Pembayaran Berhasil!',
+                text: `Total: Rp ${res.total_harga}`,
+                icon: 'success'
+            });
+            document.getElementById('feedback-msg').innerText = "✅ Selesai! Tagihan: Rp " + res.total_harga;
+            document.getElementById('ticket-input').value = "";
+            document.getElementById('hour-input').value = "";
+        });
+
+        socket.on('system-alert', (msg) => {
+            Swal.fire({ title: 'System Alert!', text: msg, icon: 'warning' });
+        });
+
+        socket.on('error-msg', (msg) => {
+            Swal.fire('Gagal!', msg, 'error');
+            document.getElementById('feedback-msg').innerText = "";
+        });
+    </script>
+</body>
+</html>
