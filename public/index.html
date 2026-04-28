@@ -86,7 +86,7 @@
                     <label style="font-size: 0.85em; color: #666; margin-bottom: 8px; display: block; height: 1.2em;">Registrasi Plat Nomor:</label>
 
                     <div style="display: flex; margin-bottom: 10px;">
-                        <input type="text" id="plat-input" placeholder="Contoh: B 1234 ABC" style="width: 100%; box-sizing: border-box;">
+                        <input type="text" id="plat-input" oninput="this.value = this.value.toUpperCase()" placeholder="Contoh: B 1234 ABC" style="width: 100%; box-sizing: border-box;">
                     </div>
 
                     <button class="btn-entry" onclick="entryManual()" style="width: 100%;">ENTRY</button>
@@ -272,7 +272,7 @@
         }
 
         function exitManual() {
-            const ticketId = document.getElementById('ticket-input').value.trim();
+            const ticketId = document.getElementById('ticket-input').value.trim().toUpperCase();
             const hour = document.getElementById('hour-input').value;
             
             if(!ticketId || !hour) return Swal.fire('Error', 'Lengkapi data!', 'error');
